@@ -1,0 +1,535 @@
+<!doctype html>
+<html ng-app="perguntasApp">
+	<head>
+		<meta charset="utf-8" />
+		<title>
+			Prova aleatória
+		</title>
+		
+		<link rel="stylesheet" href="node_modules/bootstrap/dist/css/bootstrap.min.css">
+		<link href="node_modules/font-awesome/css/font-awesome.min.css" rel="stylesheet">
+	
+		<style>
+			h1,h2 {
+				text-align: center;
+			}
+			
+			* {
+				font-family: "Calibri";
+				font-size: 10pt;
+			}
+			
+			
+			
+			#header {
+				padding-left: 40px;
+				padding-right: 40px;
+			}
+			
+			.questao {
+				-webkit-column-break-inside: avoid;
+			}
+			
+			.pbreak {
+				page-break-after: always;
+			}
+			
+			.alternativa-certa {
+				color: #070;
+				font-weight: bold;
+			}
+			
+			.opcoesHover{
+				display: none;
+			}
+			.questao:hover > .opcoesHover {
+			   display: inline-block  
+			}
+			
+			.alternativa:hover > .opcoesHover {
+			   display: inline-block  
+			}
+			
+			p {
+				margin-bottom: 0;
+			}
+			
+			@media print
+			{    
+				.no-print, .no-print *
+				{
+					display: none !important;
+				}
+				
+				.questoes {
+					-webkit-column-count: 2;
+					text-align:justify;
+				}
+			}
+		</style>
+		
+		
+		<script src='node_modules/angular/angular.min.js'></script>
+		
+		<link rel='stylesheet' href='node_modules/textangular/dist/textAngular.css'>
+		<script src='node_modules/textangular/dist/textAngular-rangy.min.js'></script>
+		<script src='node_modules/textangular/dist/textAngular-sanitize.min.js'></script>
+		<script src='node_modules/textangular/dist/textAngular.min.js'></script>
+		
+
+		<script src='node_modules/mersennetwister/src/MersenneTwister.js'></script>
+		<script src='node_modules/angular-ui-bootstrap/dist/ui-bootstrap-tpls.js'></script>
+		<script type="text/ng-template" id="myModalContent.html">
+			<div class="modal-header">
+				<h3 class="modal-title" id="modal-title">Edição de Alternativa!</h3>
+			</div>
+			<div class="modal-body" id="modal-body">
+				<div text-angular ng-model="$ctrl.objetoASerAlterado"></div>
+			</div>
+			<div class="modal-footer">
+				<button class="btn btn-primary" type="button" ng-click="$ctrl.ok()">OK</button>
+				<button class="btn btn-warning" type="button" ng-click="$ctrl.cancel()">Cancelar</button>
+			</div>
+		</script>
+		<script>
+			angular.module('perguntasApp', ['ui.bootstrap', 'textAngular']).config(function() {
+				angular.lowercase = angular.$$lowercase;
+			}).filter("trust", ['$sce', function($sce) {
+				return function(htmlCode){
+					return $sce.trustAsHtml(htmlCode);
+				}
+			}]).filter('removeHTMLTags', function() {
+				return function(text) {
+					return  text ? String(text).replace(/<[^>]+>/gm, '') : '';
+				};
+			}).controller('PerguntasController', function($scope, $http, $uibModal, $log) {
+				var $ctrl = this;
+				$scope.mt = new MersenneTwister(2);
+				
+				$scope.init = function() {
+					$scope.cabecalho = '';
+					$scope.disciplina = '';
+					$scope.origPerguntas = [];
+					
+					/*$http.get('http://10.66.161.11/vuln/provas/provaAS.json').then(function(data){
+						$scope.cabecalho = data.data.cabecalho;     
+						$scope.disciplina = data.data.disciplina;	
+						$scope.origPerguntas = data.data.perguntas;	
+						$scope.origPerguntas.forEach(function(e, i, a) {
+							a[i].correta = a[i].alternativas[0];
+						});
+					});*/
+				}
+				
+				$scope.cabecalho = '';
+				$scope.disciplina = "";
+				$scope.origPerguntas = [];
+				$scope.exibirCorretas = true;
+				
+				$scope.modoEdicao = false;
+			
+				$scope.provas = [];
+				
+				$scope.shuffle = function(array) {
+					array.sort(() => $scope.mt.rnd() - 0.5);
+				};
+				
+				$scope.baixarObjetoComoJSON = function (exportObj, exportName){
+					var dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj));
+					var downloadAnchorNode = document.createElement('a');
+					downloadAnchorNode.setAttribute("href",     dataStr);
+					downloadAnchorNode.setAttribute("download", exportName + ".json");
+					document.body.appendChild(downloadAnchorNode); // required for firefox
+					downloadAnchorNode.click();
+					downloadAnchorNode.remove();
+				};
+				
+				$scope.gerarModeloDeProvaComoObjeto = function() {
+					var objeto = {
+						disciplina: $scope.disciplina,
+						perguntas: []
+					};
+					
+					$scope.origPerguntas.forEach(function(e, i, a) {
+						objeto.perguntas.push(e);
+					});
+					
+					return objeto;
+				};
+				
+				$scope.salvar = function() {
+					if($scope.disciplina != null && $scope.disciplina.length > 0) {
+						var objeto = $scope.gerarModeloDeProvaComoObjeto();
+						$scope.baixarObjetoComoJSON(objeto, 'prova');
+					} else {
+						alert("Para salvar é necessário que você especifique o nome da disciplina.");
+					}
+				};
+			
+				$scope.abrir = function() {
+					//angular.element(document.getElementById('arquivo')).trigger('click');
+				};
+				
+				$scope.abrirJson = function(dadosJson) {
+					$scope.disciplina = dadosJson.disciplina;
+					$scope.origPerguntas = dadosJson.perguntas;
+					
+					console.log($scope.origPerguntas);
+					
+					$scope.gerarUmaProvaSemSeed();
+				};
+				
+				$scope.abrirArquivo = function(event) {
+					console.log("temos um arquivo eu acho");
+					console.log(event);
+					
+					//if(target.files[0] instanceof Blob) {
+						var reader = new FileReader(); 
+						var f = event.target.files[0];
+						reader.onload = function(event) {
+							var dados = event.target.result;
+							try {
+								var dadosJson = JSON.parse(dados);
+								$scope.abrirJson(dadosJson);
+								$scope.$apply();
+							} catch(ex) {
+								alert('Falha ao carregar arquivo: ' + ex);
+							}
+						};
+						reader.readAsText(f);
+						
+					/*} else {
+						console.log("usuário cancelou?");
+					}*/
+				};
+				
+				$scope.gerarGabaritoProva = function(seed) {
+					var retorno = "";
+					
+					/*
+						Layout
+						Prova
+						- N Perguntas
+						
+						Perguntas
+						{
+							
+							- N Alternativas
+						}
+						
+						perguntas
+					*/
+					var prova = angular.copy($scope.origPerguntas);
+					prova.seed = seed;
+					
+					$scope.mt =  new MersenneTwister(prova.seed);
+					
+					$scope.shuffle(prova);
+					
+					prova.forEach(function(element, index, array) {
+						element.alternativas[0] = "certa";
+						$scope.shuffle(element.alternativas);
+					});
+					
+					console.log(prova);
+					
+					prova.forEach(function(element, index, array) {
+						retorno += (index+1);
+						element.alternativas.forEach(function(alt, i, arr) {
+							if(arr[i] == "certa") {
+								retorno += String.fromCharCode(65 + i) + " ";
+							}
+						});
+						
+					});
+					
+					return retorno;
+				};
+				
+				$scope.gerarProva = function(seed) {
+					var prova = {}; //angular.copy($scope.origPerguntas);
+					if(seed == null) {
+						//prova.seed = parseInt(Math.random()*0xFFFFFF);
+					} else
+						prova.seed = seed;
+					$scope.mt =  new MersenneTwister(prova.seed);
+					
+					prova.perguntas = [];
+					$scope.origPerguntas.forEach(function(e, i, a) {
+						var pergunta = {};
+						pergunta.id = i;
+						pergunta.alternativas = [];
+						
+						e.alternativas.forEach(function(e1, i1, a1) {
+							pergunta.alternativas.push(i1);
+						});
+						
+						prova.perguntas.push(pergunta);
+					});
+					
+					if(prova.seed != null) {
+						$scope.shuffle(prova.perguntas);
+					
+						prova.perguntas.forEach(function(element, index, array) {
+							$scope.shuffle(element.alternativas);
+						});
+					}
+					
+					return prova;
+				};
+				
+				$scope.gerarProvas = function() {
+					$scope.provas = [];
+					var quantidade = prompt("Quantas?", 40);
+					for(var i = 0; i < quantidade; ++i) {
+						$scope.provas.push($scope.gerarProva(parseInt(Math.random()*0xFFFFFF)));
+					}
+				};
+				
+				$scope.gerarUmaProvaComSeed = function() {
+					$scope.provas = [];
+					
+					var seed = prompt("Informe a seed");
+					
+					if(seed != null) {
+						seed = parseInt(seed, 16);
+						$scope.provas.push($scope.gerarProva(seed));
+					}
+				}
+				
+				$scope.gerarUmaProvaSemSeed = function() {
+					$scope.provas = [];
+					$scope.provas.push($scope.gerarProva(null));
+				}
+				
+				$scope.gerarGabarito = function() {
+					var seed = prompt("Informe a seed");
+					
+					if(seed != null) {
+						seed = parseInt(seed, 16);
+						var str = $scope.gerarGabaritoProva(seed);
+						str = "Gabarito da prova 0x" + seed.toString(16) + "\n" + str;
+						alert(str);
+					}
+				}
+				
+				$scope.atualizarAlternativa = function(perguntaId, alternativaId) {
+					//if($scope.modoEdicao) {
+					$scope.abrirModalAlternativa('lg', perguntaId, alternativaId)
+						//var novoConteudo = prompt("Informe o novo conteúdo desta alternativa: ", );
+						
+						/*if(novoConteudo != null) {
+							$scope.origPerguntas[perguntaId].alternativas[alternativaId] = novoConteudo;
+						}*/
+					//}
+				}
+				
+				$scope.apagarPergunta = function(perguntaId) {
+					$scope.origPerguntas.splice(perguntaId, 1);
+					$scope.gerarUmaProvaSemSeed();
+				}
+				
+				$scope.apagarAlternativa = function(perguntaId, alternativaId) {
+					$scope.origPerguntas[perguntaId].alternativas.splice(alternativaId, 1);
+					$scope.gerarUmaProvaSemSeed();
+				}
+				
+				$scope.atualizarPergunta = function(perguntaId) {
+					//if($scope.modoEdicao) {
+					$scope.abrirModalPergunta('lg', perguntaId)
+						//var novoConteudo = prompt("Informe o novo conteúdo desta alternativa: ", );
+						
+						/*if(novoConteudo != null) {
+							$scope.origPerguntas[perguntaId].alternativas[alternativaId] = novoConteudo;
+						}*/
+					//}
+				}
+				
+				$scope.novaPergunta = function() {
+					$scope.origPerguntas.push({enunciado: "NOVA PERGUNTA", alternativas: []});
+					$scope.gerarUmaProvaSemSeed();
+				}
+				
+				$scope.novaAlternativa = function(perguntaId) {
+					$scope.origPerguntas[perguntaId].alternativas.push("NOVA ALTERNATIVA");
+					$scope.gerarUmaProvaSemSeed();
+				}
+				
+				$scope.abrirModalAlternativa = function (size, perguntaId, alternativaId) {
+					var retorno = undefined;
+					var parentElem = undefined;
+					var modalInstance = $uibModal.open({
+						animation: false,
+						ariaLabelledBy: 'modal-title',
+						ariaDescribedBy: 'modal-body',
+						templateUrl: 'myModalContent.html',
+						controller: 'ModalInstanceCtrl',
+						controllerAs: '$ctrl',
+						size: size,
+						appendTo: parentElem,
+						resolve: {
+							objetoASerAlterado: function () {
+								return $scope.origPerguntas[perguntaId].alternativas[alternativaId];
+							}
+						}
+					});
+
+					modalInstance.result.then(function (objetoASerAlterado) {
+						$scope.origPerguntas[perguntaId].alternativas[alternativaId] = objetoASerAlterado;
+					}, function () {
+						$log.info('Modal dismissed at: ' + new Date());
+					});
+				 };
+				 
+				 $scope.abrirModalPergunta = function (size, perguntaId) {
+					var retorno = undefined;
+					var parentElem = undefined;
+					var modalInstance = $uibModal.open({
+						animation: false,
+						ariaLabelledBy: 'modal-title',
+						ariaDescribedBy: 'modal-body',
+						templateUrl: 'myModalContent.html',
+						controller: 'ModalInstanceCtrl',
+						controllerAs: '$ctrl',
+						size: size,
+						appendTo: parentElem,
+						resolve: {
+							objetoASerAlterado: function () {
+								return $scope.origPerguntas[perguntaId].enunciado;
+							}
+						}
+					});
+
+					modalInstance.result.then(function (objetoASerAlterado) {
+						$scope.origPerguntas[perguntaId].enunciado = objetoASerAlterado;
+					}, function () {
+						$log.info('Modal dismissed at: ' + new Date());
+					});
+				 };
+				 
+				 $scope.abrirModalDisciplina = function (size) {
+					var objeto = $scope;
+					var retorno = undefined;
+					var parentElem = undefined;
+					var modalInstance = $uibModal.open({
+						animation: false,
+						ariaLabelledBy: 'modal-title',
+						ariaDescribedBy: 'modal-body',
+						templateUrl: 'myModalContent.html',
+						controller: 'ModalInstanceCtrl',
+						controllerAs: '$ctrl',
+						size: size,
+						appendTo: parentElem,
+						resolve: {
+							objetoASerAlterado: function () {
+								return objeto.disciplina;
+							}
+						}
+					});
+
+					modalInstance.result.then(function (objetoASerAlterado) {
+						objeto.disciplina = objetoASerAlterado;
+					}, function () {
+						$log.info('Modal dismissed at: ' + new Date());
+					});
+				 };
+			}).controller('ModalInstanceCtrl', function ($uibModalInstance, objetoASerAlterado) {
+				var $ctrl = this;
+				$ctrl.objetoASerAlterado = objetoASerAlterado;
+
+				$ctrl.ok = function () {
+					if($ctrl.objetoASerAlterado.length == 0) {
+						if(confirm("Isso irá apagar este objeto? Você tem certeza?")) {
+							
+						} else {
+							$uibModalInstance.dismiss('cancel');
+						}
+					} else {
+						$uibModalInstance.close($ctrl.objetoASerAlterado);
+					}
+				};
+
+				$ctrl.cancel = function () {
+					$uibModalInstance.dismiss('cancel');
+				};
+			}).directive('file', function() {
+			  return {
+				require: "ngModel",
+				restrict: 'A',
+				link: function ($scope, element, attrs, ngModel) {
+					el.bind('change', function(event){
+						var files = event.target.files;
+						var file = files[0];
+
+						ngModel.$setViewValue(file);
+						$scope.$apply();
+					});
+				}
+			  };
+			}).directive('fileOnChange', function() {
+				return {
+					restrict: 'A',
+					link: function (scope, element, attrs) {
+						var onChangeHandler = scope.$eval(attrs.fileOnChange);
+						element.on('change', onChangeHandler);
+						element.on('$destroy', function() {
+							element.off();
+						});
+
+					}
+				};
+			});;
+			
+		</script>
+		
+	</head>
+	<body>
+		<div ng-controller="PerguntasController" ng-init="init()">
+			<div class="no-print">
+				<input id="arquivo" style="position: fixed; top: -100em" type="file" file-on-change="abrirArquivo" >
+				<button ng-click="abrir()" onclick="document.getElementById('arquivo').click()">Abrir</button>
+				<button ng-click="salvar()">Salvar</button>
+				<button ng-click="novaPergunta()">Nova Pergunta</button>
+				<button ng-click="maisOpcoesBool=!maisOpcoesBool">+ Opções</button>
+				<div ng-show="maisOpcoesBool">
+					<button ng-click="gerarProvas()">Gerar Provas</button>
+					<button ng-click="gerarUmaProvaComSeed()">Gerar uma Prova com Seed</button>
+					<button ng-click="gerarGabarito()">Gabarito de uma Seed</button>
+				</div>
+				
+				<input type="checkbox" ng-model="exibirCorretas" id="exibirCorretas"/><label for="exibirCorretas"> Exibir corretas</label>
+			</div>
+			<div class="prova" ng-repeat="prova in provas">
+				<div id="header">
+					<div>
+						<div style="display: inline-block; width:65%;">Nome: _________________________________________________________</div>
+						<div style="display: inline-block; width:25%; text-align: right;">Data: ____/_____/_____</div>
+					</div>
+					<h1 ng-click="abrirModalDisciplina('lg')">Avaliação Escrita de {{ disciplina | removeHTMLTags }}</h1>
+					<h2>Seed: 0x{{ prova.seed.toString(16) }}</h2>
+					<p ng-bind-html="cabecalho | trust"></p>
+				</div>
+				<div class="questoes"> 
+					<ol type="1">
+						<li class="questao" ng-repeat="pergunta in prova.perguntas track by $index" style="margin-bottom: 10px;">
+							<div title="Clique para editar" style="display: inline-block;" ng-click="atualizarPergunta(pergunta.id)" ng-bind-html="origPerguntas[pergunta.id].enunciado | trust"></div>
+							<div class="opcoesHover no-print">
+								<button ng-click="novaAlternativa(pergunta.id)">+</button>
+								<button ng-click="apagarPergunta(pergunta.id)">-</button>
+							</div>
+							<ol type="A">
+								<li class="alternativa" ng-repeat="alternativa in pergunta.alternativas track by $index">
+									<div title="Clique para editar" style="display: inline-block;"  ng-bind-html="origPerguntas[pergunta.id].alternativas[alternativa] | trust" ng-click="atualizarAlternativa(pergunta.id, alternativa)" ng-class="{ 'alternativa-certa': (exibirCorretas && alternativa == 0) }"></div>
+									<div class="opcoesHover no-print">
+										<button ng-click="apagarAlternativa(pergunta.id, alternativa)">-</button>
+									</div>
+								</li>
+							</ol>
+						</li>
+					</ol>
+				</div>
+				<div class="pbreak"></div>
+			</div>
+		</div>
+	</body>
+</html>
